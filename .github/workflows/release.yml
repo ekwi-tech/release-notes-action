@@ -1,0 +1,106 @@
+name: Release
+
+# Cuts a tag + GitHub Release for the action. There is no build artifact — a composite action IS its source —
+# so this computes the version, proves CI was green on the exact commit, and tags it.
+#
+# It DOGFOODS the action twice: the version comes from next-version-action, and the release notes come from
+# `uses: ./` — this very action. A change that breaks rendering breaks this release's own notes first.
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Cut a pre-release (X.Y.Z-beta.N) rather than a stable X.Y.Z.'
+        required: true
+        default: true
+        type: boolean
+
+permissions: {}
+
+# The version is derived, not typed, so the group cannot key on it. One release at a time, never cancelled:
+# an interrupted run could leave a tag without the release that documents it.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Compute the version, prove CI green, tag and release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # create the tag + the GitHub Release
+      actions: read       # read CI's conclusion for the green-build gate
+      pull-requests: read # the notes step (uses: ./) resolves each commit's PR author/number
+
+    steps:
+      - name: Refuse to release from a branch other than main
+        run: |
+          if [ "${GITHUB_REF_NAME}" != "main" ]; then
+            echo "::error::Releases are cut from main only — this run targets '${GITHUB_REF_NAME}'"
+            exit 1
+          fi
+
+      # fetch-depth: 0 gives git-cliff and the version policy the full history and every tag.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Version derived by the shared policy — pinned by SHA, bumped by Dependabot. 0.1.0 for the first tag.
+      - name: Compute the next version
+        id: version
+        uses: ekwi-tech/next-version-action@515501e62443c438fe6473cf91b54e34627d3f99 # v0.1.0-beta.1
+        with:
+          prerelease: ${{ inputs.prerelease }}
+          initial-version: '0.1.0'
+
+      - name: Refuse to overwrite an existing tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+            echo "::error::Tag v${VERSION} already exists"
+            exit 1
+          fi
+
+      # "Green before ship." ci.yml runs on main precisely so this gate has a run to find: a squash merge mints
+      # a brand-new SHA the PR run never covered.
+      - name: Require a successful CI run on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          successes="$(gh api \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SHA}" \
+            --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')"
+          if [ "${successes}" -eq 0 ]; then
+            echo "::error::No successful CI run for ${SHA} — refusing to release an unvalidated action"
+            exit 1
+          fi
+          echo "CI is green for ${SHA} (${successes} successful run(s))"
+
+      # Dogfood: the action generates its own release notes. Same contract every consumer gets.
+      - name: Generate the release notes
+        id: notes
+        uses: ./
+        with:
+          version: ${{ steps.version.outputs.version }}
+          token: ${{ github.token }}
+
+      # A hyphen means pre-release (semver), and GitHub's "latest" excludes those. The hyphen is put there by
+      # the version policy and by nothing else, so this glob is exact.
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          NOTES_FILE: ${{ steps.notes.outputs.notes-file }}
+        run: |
+          set -euo pipefail
+          prerelease_flag=""
+          case "$VERSION" in *-*) prerelease_flag="--prerelease" ;; esac
+
+          gh release create "v${VERSION}" \
+            --target "$(git rev-parse HEAD)" \
+            --title "release-notes-action v${VERSION}" \
+            --notes-file "${NOTES_FILE}" \
+            $prerelease_flag

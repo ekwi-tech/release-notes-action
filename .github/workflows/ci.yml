@@ -1,0 +1,105 @@
+name: CI
+
+# Validates the action: the cliff.toml rendering rules (offline, deterministic) AND the composite wired end to
+# end (dogfood). Running on main is not redundant — release.yml refuses to publish a commit with no successful
+# CI run against its own SHA, and a squash merge mints a brand-new SHA the PR run never covered.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  lint-workflows:
+    name: Lint GitHub Actions workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
+        with:
+          args: -color
+
+  test-rules:
+    name: Exercise the cliff.toml rendering rules
+    runs-on: ubuntu-latest
+    # The rules — @-mention neutralisation, the squash-(#N) strip, the no-orphan-"in" branch — are the local
+    # logic a phantom mention or a doubled PR number would break in silence. Proven offline, against a crafted
+    # repo, with the SAME git-cliff the action ships.
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      # 2.13.1 for reproducibility, not for coupling: the rendering rules (preprocessors, template branches) are
+      # stable across git-cliff 2.x. The version that actually matters — the one resolving pr_number for the
+      # enriched format — is the action's own pin, exercised by the self-test below via `uses: ./`.
+      - name: Install git-cliff (2.x; rules are version-stable)
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-x86_64-unknown-linux-gnu.tar.gz -o "$RUNNER_TEMP/gc.tgz"
+          tar xzf "$RUNNER_TEMP/gc.tgz" -C "$RUNNER_TEMP"
+          echo "GIT_CLIFF=$(find "$RUNNER_TEMP" -name git-cliff -type f | head -1)" >> "$GITHUB_ENV"
+      - name: Run the rendering-rule tests
+        run: bash test/rules.sh
+
+  self-test:
+    name: Exercise the composite end to end
+    runs-on: ubuntu-latest
+    # Proves action.yml itself: the shallow guard, the $GITHUB_ACTION_PATH config resolution, the --github-repo
+    # enrichment and the output plumbing — none of which the offline rule tests reach. Also the living proof
+    # that the documented contract (fetch-depth: 0) is the real one.
+    permissions:
+      contents: read
+      pull-requests: read   # the action resolves each commit's PR — see action.yml
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Generate notes from this repo's own history
+        id: notes
+        uses: ./
+        with:
+          version: 0.0.0-selftest
+          token: ${{ github.token }}
+      - name: The action must produce a well-formed notes file
+        env:
+          NOTES: ${{ steps.notes.outputs.notes-file }}
+        run: |
+          set -euo pipefail
+          test -n "$NOTES" || { echo "::error::the action emitted no notes-file output"; exit 1; }
+          test -f "$NOTES" || { echo "::error::notes-file '$NOTES' does not exist"; exit 1; }
+          echo "----- notes -----"; cat "$NOTES"; echo "-----------------"
+          # git-cliff may legitimately emit an empty body when nothing is unreleased; only assert shape when
+          # there is content — the wrapper working (a file produced) is the point.
+          if [ -s "$NOTES" ]; then
+            grep -qE '^## \[' "$NOTES" || { echo "::error::notes present but no version heading"; exit 1; }
+          fi
+
+  # THE required status check, and the only one a ruleset should name. Every job above is a `needs:` here, so
+  # adding one extends what "green" means without anyone touching the ruleset.
+  ci-gate:
+    name: CI gate
+    if: always()
+    needs: [lint-workflows, test-rules, self-test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job must have succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "upstream results: $RESULTS"
+          for r in $RESULTS; do
+            [ "$r" = "success" ] || { echo "::error::A required job did not succeed ($r)."; exit 1; }
+          done
