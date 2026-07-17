@@ -28,9 +28,9 @@ inputs:
     description: "A token carrying pull-requests read on this repo, for PR/contributor enrichment — normally secrets.GITHUB_TOKEN. The job must grant that permission."
     required: true
   git-cliff-version:
-    description: "git-cliff binary version. Pinned deliberately — the action default (2.5.0) leaves commit.remote.pr_number empty and drops the PR from every line. Do not lower without re-proving."
+    description: "git-cliff release tag to install (v-prefixed, as the wrapped git-cliff-action expects). Pinned deliberately — git-cliff 2.5.0 leaves commit.remote.pr_number empty and drops the PR from every line. Do not lower without re-proving."
     required: false
-    default: "2.13.1"
+    default: "v2.13.1"
   config:
     description: "Path to a cliff.toml to use instead of the bundled canonical one. Empty uses the bundled config — the intended path for the whole fleet."
     required: false

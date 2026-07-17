@@ -42,7 +42,7 @@ Requires `fetch-depth: 0` on the checkout (git-cliff needs the full history and 
 |---|---|---|---|
 | `version` | yes | — | The `X.Y.Z` being released, without the leading `v`. |
 | `token` | yes | — | Needs `pull-requests: read`. Usually `secrets.GITHUB_TOKEN`. |
-| `git-cliff-version` | no | `2.13.1` | **Do not lower.** 2.5.0 leaves `commit.remote.pr_number` empty and silently drops the PR from every line. |
+| `git-cliff-version` | no | `v2.13.1` | git-cliff release tag (v-prefixed). **Do not lower.** 2.5.0 leaves `commit.remote.pr_number` empty and silently drops the PR from every line. |
 | `config` | no | *(bundled)* | Path to a `cliff.toml` override. Leave empty to use the canonical fleet config. |
 
 ## Output
