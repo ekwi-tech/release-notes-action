@@ -1,0 +1,8 @@
+# Code ownership for release-notes-action. cliff.toml is the CANONICAL release-note config for the whole fleet
+# (every consumer renders through it) and .github/workflows/ mints this action's releases — reviews here are not
+# about style.
+#
+# This routes every PR's reviewer, Dependabot included: GitHub removed dependabot.yml's reviewers: option on
+# 2025-08-08 and pointed here. It REQUESTS review, does not require it — this repo is not under the ekwi-sync-*
+# ruleset, so the enforced signal is the CI gate. Replace @ssylla with a team once a second reviewer exists.
+* @ssylla

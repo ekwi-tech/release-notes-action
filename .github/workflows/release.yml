@@ -8,11 +8,14 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      prerelease:
-        description: 'Cut a pre-release (X.Y.Z-beta.N) rather than a stable X.Y.Z.'
+      channel:
+        description: 'Release channel — pre-release cuts X.Y.Z-beta.N, latest cuts a stable X.Y.Z.'
         required: true
-        default: true
-        type: boolean
+        default: pre-release
+        type: choice
+        options:
+          - pre-release
+          - latest
 
 permissions: {}
 
@@ -48,9 +51,10 @@ jobs:
       # Version derived by the shared policy — pinned by SHA, bumped by Dependabot. 0.1.0 for the first tag.
       - name: Compute the next version
         id: version
-        uses: ekwi-tech/next-version-action@515501e62443c438fe6473cf91b54e34627d3f99 # v0.1.0-beta.1
+        uses: ekwi-tech/next-version-action@e3a828a0165905c0719df3f79f8cdb5be93336d6 # v0.1.0
         with:
-          prerelease: ${{ inputs.prerelease }}
+          # next-version-action's contract stays boolean; the dropdown maps to it here.
+          prerelease: ${{ inputs.channel == 'pre-release' }}
           initial-version: '0.1.0'
 
       - name: Refuse to overwrite an existing tag
