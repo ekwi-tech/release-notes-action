@@ -1,12 +1,24 @@
 # Composite action — generate a release-note body from Conventional Commits, enriched with the PR author, PR
 # number and first-time-contributor list resolved from the GitHub API.
 #
-# Centralises what every ekwi-tech release repo used to copy verbatim: the cliff.toml config, the git-cliff
-# version pin, and the token/repo wiring. A consumer deletes its own cliff.toml and replaces its git-cliff
-# step with one `uses:` of this action. Pin it by SHA and let Dependabot bump it — the same contract as
-# ekwi-tech/next-version-action. A format change is then one PR here plus SHA bumps, not one PR per repo.
+# WHY THIS EXISTS. The same cliff.toml and git-cliff step were being COPIED into every repo that releases
+# (composer-attribute-collector, ekwi-sync-common, the sync skeleton and its client payload, every future
+# project). Copies drift, and the non-obvious bits rot silently: the git-cliff version pin (2.5.0 drops every
+# PR number), the @-mention neutralisation, the squash-`(#N)` strip. Here the config and its tests live once;
+# consumers reference this action and carry neither.
+#
+# WHY A COMPOSITE, not Docker or JS. It only needs git-cliff, which the wrapped orhun action installs — so a
+# Docker image buys nothing and a JS rewrite would throw away the ability to run the same config locally.
+#
+# WHY IT DOGFOODS ITSELF. This repo's own release.yml generates its notes with `uses: ./` — a change that
+# breaks rendering breaks this action's own release first, the earliest possible signal.
 name: Release notes (git-cliff)
 description: Generate a release-note body from Conventional Commits, enriched with PR authors and contributors.
+author: ekwi-tech
+
+branding:
+  icon: file-text
+  color: blue
 
 inputs:
   version:
@@ -16,9 +28,9 @@ inputs:
     description: "A token carrying pull-requests read on this repo, for PR/contributor enrichment — normally secrets.GITHUB_TOKEN. The job must grant that permission."
     required: true
   git-cliff-version:
-    description: "git-cliff binary version. Pinned deliberately — the action default (2.5.0) leaves commit.remote.pr_number empty and drops the PR from every line. Do not lower without re-proving."
+    description: "git-cliff release tag to install (v-prefixed, as the wrapped git-cliff-action expects). Pinned deliberately — git-cliff 2.5.0 leaves commit.remote.pr_number empty and drops the PR from every line. Do not lower without re-proving."
     required: false
-    default: "2.13.1"
+    default: "v2.13.1"
   config:
     description: "Path to a cliff.toml to use instead of the bundled canonical one. Empty uses the bundled config — the intended path for the whole fleet."
     required: false
@@ -32,6 +44,19 @@ outputs:
 runs:
   using: composite
   steps:
+    # git-cliff reads every tag and the full commit graph. A shallow clone silently truncates both, producing
+    # wrong notes rather than an error — the worst kind. Refuse it loudly: the contract is actions/checkout with
+    # fetch-depth: 0, and this turns a misconfigured consumer into a clear error at the top of the log.
+    - name: Assert the full history is present
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+          echo "::error::release-notes needs every tag and the full commit history, but this is a shallow clone."
+          echo "::error::Check the repository out with actions/checkout and fetch-depth: 0."
+          exit 1
+        fi
+
     # The bundled config is repo-agnostic. --github-repo activates PR/contributor enrichment (no [remote.github]
     # section needed) and is passed as a proven flag rather than the GITHUB_REPO env. GITHUB_REPOSITORY, always
     # set by the runtime, feeds get_env in the template for the commit URL. GITHUB_TOKEN lifts the private-repo
