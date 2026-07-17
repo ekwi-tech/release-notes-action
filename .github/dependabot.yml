@@ -1,0 +1,23 @@
+version: 2
+
+# Without this file the "pinned by SHA, bumped by Dependabot" contract has nothing behind it — the SHA pins
+# freeze and rot. directory "/" scans the workflows AND this repo's action.yml, where git-cliff-action is pinned.
+#
+# assignees is ekwi-bot (the PR is owned by automation; Dependabot honours assignees only for write-access
+# accounts). Who REVIEWS is CODEOWNERS' job — GitHub removed dependabot.yml's reviewers: option on 2025-08-08.
+#
+# next-version-action is watched here on purpose: the ping-pong cycle is already broken on its side (its own
+# dependabot.yml ignores this action), so watching it one-way is the controlled rollout, not a loop.
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    assignees:
+      - ekwi-bot
+    commit-message:
+      prefix: ci          # Conventional Commits type — commitlint.yml accepts it
+    groups:
+      actions-all:
+        patterns:
+          - "*"
