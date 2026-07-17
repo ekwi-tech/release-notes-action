@@ -84,7 +84,7 @@ jobs:
           # git-cliff may legitimately emit an empty body when nothing is unreleased; only assert shape when
           # there is content — the wrapper working (a file produced) is the point.
           if [ -s "$NOTES" ]; then
-            grep -qE '^## \[' "$NOTES" || { echo "::error::notes present but no version heading"; exit 1; }
+            grep -qE "^## What's Changed in " "$NOTES" || { echo "::error::notes present but no version heading"; exit 1; }
           fi
 
   # THE required status check, and the only one a ruleset should name. Every job above is a `needs:` here, so
