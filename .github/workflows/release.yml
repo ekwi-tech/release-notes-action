@@ -51,7 +51,7 @@ jobs:
       # Version derived by the shared policy — pinned by SHA, bumped by Dependabot. 0.1.0 for the first tag.
       - name: Compute the next version
         id: version
-        uses: ekwi-tech/next-version-action@e3a828a0165905c0719df3f79f8cdb5be93336d6 # v0.1.0
+        uses: ekwi-tech/next-version-action@32e2b9c8d1c1dac081026d43f5f4c8376793778f # v0.1.2
         with:
           # next-version-action's contract stays boolean; the dropdown maps to it here.
           prerelease: ${{ inputs.channel == 'pre-release' }}
