@@ -21,3 +21,8 @@ updates:
       actions-all:
         patterns:
           - "*"
+    # release-workflow is consumed back now: this repo's commitlint.yml calls its reusable, while release-workflow
+    # already pins this action. Watching it here would ping-pong; ignore it (release-workflow keeps watching us, so
+    # the rollout stays one-way). next-version-action is deliberately NOT ignored — see the header note.
+    ignore:
+      - dependency-name: "ekwi-tech/release-workflow"
