@@ -62,7 +62,7 @@ runs:
     # set by the runtime, feeds get_env in the template for the commit URL. GITHUB_TOKEN lifts the private-repo
     # 403 that would otherwise make git-cliff panic.
     - id: git-cliff
-      uses: orhun/git-cliff-action@f50e11560dce63f7c33227798f90b924471a88b5 # v4
+      uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
       with:
